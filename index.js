@@ -43,10 +43,10 @@ const userSockets = new Map(); // WebSocket -> userId
 
 // Helper functions
 function parseChannel(channel) {
-  // Parse "chat.user.10001254" -> userId: 10001254
+  // Parse "chat.user.10001254" -> userId: "10001254" (string)
   const parts = channel.split('.');
   if (parts.length >= 3 && parts[0] === 'chat' && parts[1] === 'user') {
-    return parts[2];
+    return String(parts[2]); // Ép về string để đảm bảo consistency
   }
   return null;
 }
@@ -56,11 +56,17 @@ function handleLaravelMessage(ws, data) {
   
   // Parse target user from channel
   const targetUserId = parseChannel(data.channel);
+  console.log(`🎯 Target user ID: ${targetUserId} (type: ${typeof targetUserId})`);
+  console.log(`📊 Available users: ${Array.from(clients.keys())}`);
+  console.log(`📊 Available user types: ${Array.from(clients.keys()).map(k => typeof k + ":" + k)}`);
   
   if (targetUserId) {
     // Send to specific user
     const targetWs = clients.get(targetUserId);
-    if (targetWs && targetWs.readyState === ws.OPEN) {
+    console.log(`🔍 Target WS exists: ${!!targetWs}`);
+    console.log(`🔍 Target WS ready state: ${targetWs ? targetWs.readyState : 'N/A'}`);
+    
+    if (targetWs && targetWs.readyState === WebSocket.OPEN) {
       targetWs.send(JSON.stringify({
         type: "laravel_message",
         event: data.event,
@@ -71,6 +77,18 @@ function handleLaravelMessage(ws, data) {
       console.log(`📤 Sent to user ${targetUserId}`);
     } else {
       console.log(`❌ User ${targetUserId} not connected`);
+      
+      // Check if user not registered
+      if (!clients.has(targetUserId)) {
+        console.log(`⚠️ User ${targetUserId} chưa register WebSocket`);
+      }
+      
+      // Clean up stale connection
+      if (targetWs && targetWs.readyState !== WebSocket.OPEN) {
+        console.log(`🧹 Cleaning up stale connection for user ${targetUserId}`);
+        clients.delete(targetUserId);
+        userSockets.delete(targetWs);
+      }
     }
   } else {
     console.log(`❌ Invalid channel format: ${data.channel}`);
@@ -102,17 +120,30 @@ function handleSimpleMessage(ws, data) {
 }
 
 function handleUserRegistration(ws, data) {
-  const userId = data.userId;
+  const userId = String(data.userId); // Ép về string để đảm bảo consistency
+  console.log(`🔍 Registering user ${userId} (type: ${typeof userId})`);
+  console.log(`🔍 Current clients: ${Array.from(clients.keys())}`);
+  console.log(`🔍 WebSocket ready state: ${ws.readyState}`);
+  
+  // Check if WebSocket is still open
+  if (ws.readyState !== WebSocket.OPEN) {
+    console.log(`❌ WebSocket not open for user ${userId}`);
+    return;
+  }
+  
   clients.set(userId, ws);
   userSockets.set(ws, userId);
   
   console.log(`👤 User ${userId} registered`);
+  console.log(`📊 Total users online: ${clients.size}`);
+  console.log(`📊 All users: ${Array.from(clients.keys())}`);
   
   ws.send(JSON.stringify({
     type: "registered",
     userId: userId,
     message: `User ${userId} registered successfully`,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    onlineUsers: Array.from(clients.keys())
   }));
 }
 
@@ -132,19 +163,26 @@ wss.on("connection", (ws, req) => {
       const data = JSON.parse(message);
       console.log(`📨 Received:`, data);
       
+      // Debug: Check message format
+      console.log(`🔍 Debug - event: ${data.event}, channel: ${data.channel}, data: ${data.data ? 'exists' : 'missing'}`);
+      
       // Handle Laravel WebSocket format
       if (data.event && data.channel && data.data) {
+        console.log(`🎯 Handling Laravel message`);
         handleLaravelMessage(ws, data);
       } 
       // Handle simple message format (backward compatibility)
       else if (data.message) {
+        console.log(`🎯 Handling simple message`);
         handleSimpleMessage(ws, data);
       }
       // Handle user registration
       else if (data.type === "register" && data.userId) {
+        console.log(`🎯 Handling user registration`);
         handleUserRegistration(ws, data);
       }
       else {
+        console.log(`❌ Unknown message format`);
         // Unknown format
         ws.send(JSON.stringify({
           type: "error",
@@ -163,22 +201,71 @@ wss.on("connection", (ws, req) => {
     }
   });
 
-  ws.on("close", () => {
-    console.log("👋 Client disconnected");
+  ws.on("close", (code, reason) => {
+    console.log(`👋 Client disconnected - Code: ${code}, Reason: ${reason}`);
     // Remove from user tracking
     const userId = userSockets.get(ws);
     if (userId) {
       clients.delete(userId);
       userSockets.delete(ws);
       console.log(`👤 User ${userId} disconnected`);
+      console.log(`📊 Remaining users online: ${clients.size}`);
+      console.log(`📊 Available users: ${Array.from(clients.keys())}`);
+    } else {
+      console.log(`⚠️ Client disconnected but no user ID found`);
     }
   });
 
   ws.on("error", (error) => {
     console.error("❌ WebSocket error:", error);
-    clients.delete(ws);
+    const userId = userSockets.get(ws);
+    if (userId) {
+      clients.delete(userId);
+      userSockets.delete(ws);
+      console.log(`👤 User ${userId} disconnected due to error`);
+      console.log(`📊 Remaining users online: ${clients.size}`);
+    }
   });
+
+  // Ping/pong to keep connection alive
+  ws.on("pong", () => {
+    console.log("🏓 Pong received");
+  });
+
+  // Send ping every 30 seconds
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+      console.log("🏓 Ping sent");
+    } else {
+      console.log(`🏓 Ping stopped - WebSocket state: ${ws.readyState}`);
+      clearInterval(pingInterval);
+    }
+  }, 30000);
 });
+
+// Periodic cleanup of stale connections
+setInterval(() => {
+  console.log(`🧹 Periodic cleanup - checking ${clients.size} users`);
+  const staleUsers = [];
+  
+  clients.forEach((ws, userId) => {
+    console.log(`🔍 User ${userId} - WS state: ${ws.readyState}`);
+    if (ws.readyState !== WebSocket.OPEN) {
+      staleUsers.push(userId);
+    }
+  });
+  
+  if (staleUsers.length > 0) {
+    console.log(`🧹 Cleaning up ${staleUsers.length} stale connections: ${staleUsers.join(', ')}`);
+    staleUsers.forEach(userId => {
+      const ws = clients.get(userId);
+      clients.delete(userId);
+      if (ws) userSockets.delete(ws);
+    });
+    console.log(`📊 Remaining users: ${clients.size}`);
+  }
+}, 30000); // Check every 30 seconds
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
