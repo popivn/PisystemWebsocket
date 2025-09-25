@@ -40,13 +40,15 @@ const wss = new WebSocketServer({
 // Store connected clients with user info
 const clients = new Map(); // userId -> WebSocket
 const userSockets = new Map(); // WebSocket -> userId
+const usernameToUserId = new Map(); // username -> userId
+const userIdToUsername = new Map(); // userId -> username
 
 // Helper functions
 function parseChannel(channel) {
-  // Parse "chat.user.10001254" -> userId: "10001254" (string)
+  // Parse "chat.user.john_doe" -> username: "john_doe"
   const parts = channel.split('.');
   if (parts.length >= 3 && parts[0] === 'chat' && parts[1] === 'user') {
-    return String(parts[2]); // Ép về string để đảm bảo consistency
+    return String(parts[2]); // username
   }
   return null;
 }
@@ -54,11 +56,11 @@ function parseChannel(channel) {
 function handleLaravelMessage(ws, data) {
   console.log(`📨 Laravel message: ${data.event} on ${data.channel}`);
   
-  // Parse target user from channel
-  const targetUserId = parseChannel(data.channel);
-  console.log(`🎯 Target user ID: ${targetUserId} (type: ${typeof targetUserId})`);
+  // Parse target username from channel
+  const targetUsername = parseChannel(data.channel);
+  console.log(`🎯 Target username: ${targetUsername} (type: ${typeof targetUsername})`);
   console.log(`📊 Available users: ${Array.from(clients.keys())}`);
-  console.log(`📊 Available user types: ${Array.from(clients.keys()).map(k => typeof k + ":" + k)}`);
+  console.log(`📊 Username mappings: ${Array.from(usernameToUserId.entries()).map(([u, id]) => `${u}:${id}`)}`);
   
   // Log message details
   const senderUser = data.data?.user || 'Unknown';
@@ -69,40 +71,50 @@ function handleLaravelMessage(ws, data) {
   console.log(`💬 Message Details:`);
   console.log(`   👤 From: ${senderUser}`);
   console.log(`   📝 Content: ${messageContent}`);
-  console.log(`   🎯 To User ID: ${receiverId}`);
+  console.log(`   🎯 To Username: ${targetUsername}`);
   console.log(`   💬 Conversation: ${conversationId}`);
   console.log(`   ⏰ Time: ${data.data?.timestamp || 'Unknown'}`);
   
-  if (targetUserId) {
-    // Send to specific user
-    const targetWs = clients.get(targetUserId);
-    console.log(`🔍 Target WS exists: ${!!targetWs}`);
-    console.log(`🔍 Target WS ready state: ${targetWs ? targetWs.readyState : 'N/A'}`);
+  if (targetUsername) {
+    // Get userId from username
+    const targetUserId = usernameToUserId.get(targetUsername);
+    console.log(`🔍 Target User ID: ${targetUserId} for username: ${targetUsername}`);
     
-    if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-      targetWs.send(JSON.stringify({
-        type: "laravel_message",
-        event: data.event,
-        channel: data.channel,
-        data: data.data,
-        timestamp: new Date().toISOString()
-      }));
-      console.log(`📤 ✅ Message delivered: ${senderUser} → User ${targetUserId}`);
-      console.log(`📤 ✅ Content: "${messageContent}"`);
+    if (targetUserId) {
+      // Send to specific user
+      const targetWs = clients.get(targetUserId);
+      console.log(`🔍 Target WS exists: ${!!targetWs}`);
+      console.log(`🔍 Target WS ready state: ${targetWs ? targetWs.readyState : 'N/A'}`);
+      
+      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        targetWs.send(JSON.stringify({
+          type: "laravel_message",
+          event: data.event,
+          channel: data.channel,
+          data: data.data,
+          timestamp: new Date().toISOString()
+        }));
+        console.log(`📤 ✅ Message delivered: ${senderUser} → ${targetUsername} (${targetUserId})`);
+        console.log(`📤 ✅ Content: "${messageContent}"`);
+      } else {
+        console.log(`❌ User ${targetUsername} (${targetUserId}) not connected`);
+        
+        // Check if user not registered
+        if (!clients.has(targetUserId)) {
+          console.log(`⚠️ User ${targetUsername} (${targetUserId}) chưa register WebSocket`);
+        }
+        
+        // Clean up stale connection
+        if (targetWs && targetWs.readyState !== WebSocket.OPEN) {
+          console.log(`🧹 Cleaning up stale connection for user ${targetUsername} (${targetUserId})`);
+          clients.delete(targetUserId);
+          userSockets.delete(targetWs);
+          usernameToUserId.delete(targetUsername);
+          userIdToUsername.delete(targetUserId);
+        }
+      }
     } else {
-      console.log(`❌ User ${targetUserId} not connected`);
-      
-      // Check if user not registered
-      if (!clients.has(targetUserId)) {
-        console.log(`⚠️ User ${targetUserId} chưa register WebSocket`);
-      }
-      
-      // Clean up stale connection
-      if (targetWs && targetWs.readyState !== WebSocket.OPEN) {
-        console.log(`🧹 Cleaning up stale connection for user ${targetUserId}`);
-        clients.delete(targetUserId);
-        userSockets.delete(targetWs);
-      }
+      console.log(`❌ Username ${targetUsername} not found in mappings`);
     }
   } else {
     console.log(`❌ Invalid channel format: ${data.channel}`);
@@ -150,28 +162,34 @@ function handleSimpleMessage(ws, data) {
 
 function handleUserRegistration(ws, data) {
   const userId = String(data.userId); // Ép về string để đảm bảo consistency
-  console.log(`🔍 Registering user ${userId} (type: ${typeof userId})`);
+  const username = data.username || 'Unknown';
+  
+  console.log(`🔍 Registering user ${userId} (${username}) (type: ${typeof userId})`);
   console.log(`🔍 Current clients: ${Array.from(clients.keys())}`);
   console.log(`🔍 WebSocket ready state: ${ws.readyState}`);
   
   // Check if WebSocket is still open
   if (ws.readyState !== WebSocket.OPEN) {
-    console.log(`❌ WebSocket not open for user ${userId}`);
+    console.log(`❌ WebSocket not open for user ${userId} (${username})`);
     return;
   }
   
   clients.set(userId, ws);
   userSockets.set(ws, userId);
+  usernameToUserId.set(username, userId);
+  userIdToUsername.set(userId, username);
   
-  console.log(`👤 ✅ User ${userId} registered successfully`);
+  console.log(`👤 ✅ User ${userId} (${username}) registered successfully`);
   console.log(`📊 Total users online: ${clients.size}`);
   console.log(`📊 All users: ${Array.from(clients.keys())}`);
+  console.log(`📊 Username mappings: ${Array.from(usernameToUserId.entries()).map(([u, id]) => `${u}:${id}`)}`);
   console.log(`🔗 Connection from: ${ws._socket?.remoteAddress || 'Unknown'}`);
   
   ws.send(JSON.stringify({
     type: "registered",
     userId: userId,
-    message: `User ${userId} registered successfully`,
+    username: username,
+    message: `User ${username} (${userId}) registered successfully`,
     timestamp: new Date().toISOString(),
     onlineUsers: Array.from(clients.keys())
   }));
@@ -236,9 +254,12 @@ wss.on("connection", (ws, req) => {
     // Remove from user tracking
     const userId = userSockets.get(ws);
     if (userId) {
+      const username = userIdToUsername.get(userId);
       clients.delete(userId);
       userSockets.delete(ws);
-      console.log(`👤 ❌ User ${userId} disconnected`);
+      usernameToUserId.delete(username);
+      userIdToUsername.delete(userId);
+      console.log(`👤 ❌ User ${userId} (${username}) disconnected`);
       console.log(`📊 Remaining users online: ${clients.size}`);
       console.log(`📊 Available users: ${Array.from(clients.keys())}`);
       console.log(`🔗 Disconnection reason: ${reason || 'Normal closure'}`);
