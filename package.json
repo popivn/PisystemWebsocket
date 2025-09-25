@@ -1,0 +1,17 @@
+{
+  "name": "my-websocket-server",
+  "version": "1.0.0",
+  "description": "WebSocket server with Express for Render deployment",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": ["websocket", "nodejs", "express", "render"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.15.1"
+  }
+}
