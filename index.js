@@ -60,6 +60,19 @@ function handleLaravelMessage(ws, data) {
   console.log(`📊 Available users: ${Array.from(clients.keys())}`);
   console.log(`📊 Available user types: ${Array.from(clients.keys()).map(k => typeof k + ":" + k)}`);
   
+  // Log message details
+  const senderUser = data.data?.user || 'Unknown';
+  const messageContent = data.data?.message || 'No message';
+  const receiverId = data.data?.receiverId || 'Unknown';
+  const conversationId = data.data?.conversationId || 'Unknown';
+  
+  console.log(`💬 Message Details:`);
+  console.log(`   👤 From: ${senderUser}`);
+  console.log(`   📝 Content: ${messageContent}`);
+  console.log(`   🎯 To User ID: ${receiverId}`);
+  console.log(`   💬 Conversation: ${conversationId}`);
+  console.log(`   ⏰ Time: ${data.data?.timestamp || 'Unknown'}`);
+  
   if (targetUserId) {
     // Send to specific user
     const targetWs = clients.get(targetUserId);
@@ -74,7 +87,8 @@ function handleLaravelMessage(ws, data) {
         data: data.data,
         timestamp: new Date().toISOString()
       }));
-      console.log(`📤 Sent to user ${targetUserId}`);
+      console.log(`📤 ✅ Message delivered: ${senderUser} → User ${targetUserId}`);
+      console.log(`📤 ✅ Content: "${messageContent}"`);
     } else {
       console.log(`❌ User ${targetUserId} not connected`);
       
@@ -96,6 +110,15 @@ function handleLaravelMessage(ws, data) {
 }
 
 function handleSimpleMessage(ws, data) {
+  // Get sender info
+  const senderUserId = userSockets.get(ws) || 'Unknown';
+  const messageContent = data.message || 'No message';
+  
+  console.log(`💬 Simple Message Details:`);
+  console.log(`   👤 From User ID: ${senderUserId}`);
+  console.log(`   📝 Content: ${messageContent}`);
+  console.log(`   📊 Broadcasting to ${clients.size - 1} other users`);
+  
   // Broadcast message đến tất cả client khác
   const broadcastMessage = {
     type: "broadcast",
@@ -105,11 +128,17 @@ function handleSimpleMessage(ws, data) {
     clientCount: clients.size
   };
   
-  clients.forEach((client) => {
-    if (client !== ws && client.readyState === ws.OPEN) {
+  let broadcastCount = 0;
+  clients.forEach((client, userId) => {
+    if (client !== ws && client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify(broadcastMessage));
+      broadcastCount++;
+      console.log(`📤 ✅ Broadcasted to User ${userId}`);
     }
   });
+  
+  console.log(`📤 ✅ Simple message delivered: User ${senderUserId} → ${broadcastCount} users`);
+  console.log(`📤 ✅ Content: "${messageContent}"`);
   
   // Echo back to sender
   ws.send(JSON.stringify({
@@ -134,9 +163,10 @@ function handleUserRegistration(ws, data) {
   clients.set(userId, ws);
   userSockets.set(ws, userId);
   
-  console.log(`👤 User ${userId} registered`);
+  console.log(`👤 ✅ User ${userId} registered successfully`);
   console.log(`📊 Total users online: ${clients.size}`);
   console.log(`📊 All users: ${Array.from(clients.keys())}`);
+  console.log(`🔗 Connection from: ${ws._socket?.remoteAddress || 'Unknown'}`);
   
   ws.send(JSON.stringify({
     type: "registered",
@@ -208,9 +238,10 @@ wss.on("connection", (ws, req) => {
     if (userId) {
       clients.delete(userId);
       userSockets.delete(ws);
-      console.log(`👤 User ${userId} disconnected`);
+      console.log(`👤 ❌ User ${userId} disconnected`);
       console.log(`📊 Remaining users online: ${clients.size}`);
       console.log(`📊 Available users: ${Array.from(clients.keys())}`);
+      console.log(`🔗 Disconnection reason: ${reason || 'Normal closure'}`);
     } else {
       console.log(`⚠️ Client disconnected but no user ID found`);
     }
