@@ -192,8 +192,8 @@
             <div>
                 <h3>📤 Send Laravel Message</h3>
                 <div class="form-group">
-                    <label for="targetUserId">Target User ID:</label>
-                    <input type="number" id="targetUserId" value="10001255" placeholder="10001255">
+                    <label for="targetUsername">Target Username:</label>
+                    <input type="text" id="targetUsername" value="jane_doe" placeholder="jane_doe">
                 </div>
                 
                 <div class="form-group">
@@ -382,28 +382,28 @@
                 return;
             }
             
-            const targetUserId = document.getElementById('targetUserId').value;
+            const targetUsername = document.getElementById('targetUsername').value;
             const messageText = document.getElementById('messageText').value;
             
-            if (!targetUserId || !messageText) {
-                alert('Vui lòng nhập Target User ID và Message!');
+            if (!targetUsername || !messageText) {
+                alert('Vui lòng nhập Target Username và Message!');
                 return;
             }
             
             const data = {
                 event: "WebSocketMessage",
-                channel: `chat.user.${targetUserId}`,
+                channel: `chat.user.${targetUsername}`,
                 data: {
                     user: `User ${currentUserId || 'Unknown'}`,
                     message: messageText,
-                    receiverId: parseInt(targetUserId),
-                    conversationId: `${currentUserId || 'unknown'}_${targetUserId}`,
+                    receiverId: targetUsername,
+                    conversationId: `${currentUserId || 'unknown'}_${targetUsername}`,
                     timestamp: new Date().toLocaleTimeString()
                 }
             };
             
             socket.send(JSON.stringify(data));
-            addMessage(`📤 Laravel Message to user ${targetUserId}: ${messageText}`, 'sent');
+            addMessage(`📤 Laravel Message to user ${targetUsername}: ${messageText}`, 'sent');
         }
         
         function sendTestMessage() {
