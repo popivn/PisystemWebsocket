@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laravel WebSocket Test Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        
+        .connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .messages {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            word-wrap: break-word;
+        }
+        
+        .message.sent {
+            background: #007bff;
+            color: white;
+            margin-left: 20px;
+        }
+        
+        .message.received {
+            background: #e9ecef;
+            color: #333;
+            margin-right: 20px;
+        }
+        
+        .message.system {
+            background: #fff3cd;
+            color: #856404;
+            text-align: center;
+            font-style: italic;
+        }
+        
+        .message.laravel {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .timestamp {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .json-preview {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Laravel WebSocket Test Client</h1>
+        
+        <div id="status" class="status disconnected">
+            ❌ Disconnected
+        </div>
+        
+        <div class="two-column">
+            <div>
+                <h3>🔗 Connection</h3>
+                <div class="form-group">
+                    <label for="wsUrl">WebSocket URL:</label>
+                    <input type="text" id="wsUrl" value="ws://localhost:3000/ws">
+                </div>
+                
+                <div class="form-group">
+                    <label for="userId">User ID:</label>
+                    <input type="number" id="userId" value="10001254" placeholder="10001254">
+                </div>
+                
+                <div class="controls">
+                    <button id="connectBtn" onclick="connect()">🔗 Connect</button>
+                    <button id="disconnectBtn" onclick="disconnect()" disabled>❌ Disconnect</button>
+                    <button onclick="registerUser()">👤 Register User</button>
+                </div>
+            </div>
+            
+            <div>
+                <h3>📤 Send Laravel Message</h3>
+                <div class="form-group">
+                    <label for="targetUserId">Target User ID:</label>
+                    <input type="number" id="targetUserId" value="10001255" placeholder="10001255">
+                </div>
+                
+                <div class="form-group">
+                    <label for="messageText">Message:</label>
+                    <input type="text" id="messageText" value="Hello from Laravel!" placeholder="Your message">
+                </div>
+                
+                <div class="controls">
+                    <button onclick="sendLaravelMessage()">📤 Send Laravel Message</button>
+                    <button onclick="sendTestMessage()">🧪 Send Test Message</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="json-preview" id="jsonPreview">
+            <strong>Laravel Message Format:</strong>
+{
+  "event": "WebSocketMessage",
+  "channel": "chat.user.10001254",
+  "data": {
+    "user": "Hứa Hữu Bằng(1)",
+    "message": "Hello B",
+    "receiverId": 10001254,
+    "conversationId": "18_10001254",
+    "timestamp": "13:27"
+  }
+}
+        </div>
+        
+        <div id="messages" class="messages">
+            <div class="message system">
+                💡 Connect và register user để bắt đầu test Laravel WebSocket!
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button onclick="clearMessages()">🗑️ Clear Messages</button>
+            <button onclick="showHelp()">❓ Help</button>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let isConnected = false;
+        let currentUserId = null;
+        
+        function updateStatus(connected) {
+            isConnected = connected;
+            const statusEl = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            
+            if (connected) {
+                statusEl.textContent = '✅ Connected';
+                statusEl.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusEl.textContent = '❌ Disconnected';
+                statusEl.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+        
+        function addMessage(content, type = 'received') {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageEl.innerHTML = `
+                <div>${content}</div>
+                <div class="timestamp">${timestamp}</div>
+            `;
+            
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+            
+            if (!url) {
+                alert('Vui lòng nhập WebSocket URL!');
+                return;
+            }
+            
+            try {
+                socket = new WebSocket(url);
+                
+                socket.onopen = function(event) {
+                    console.log('WebSocket connected');
+                    updateStatus(true);
+                    addMessage('🔗 Connected to WebSocket server!', 'system');
+                };
+                
+                socket.onmessage = function(event) {
+                    console.log('Message received:', event.data);
+                    
+                    try {
+                        const data = JSON.parse(event.data);
+                        let message = '';
+                        
+                        switch(data.type) {
+                            case 'welcome':
+                                message = `🎉 ${data.message} (Clients: ${data.clientCount})`;
+                                break;
+                            case 'registered':
+                                message = `👤 ${data.message}`;
+                                currentUserId = data.userId;
+                                break;
+                            case 'laravel_message':
+                                message = `📨 Laravel Message: ${data.event} on ${data.channel}<br>Data: ${JSON.stringify(data.data, null, 2)}`;
+                                break;
+                            case 'echo':
+                                message = `📨 Echo: ${data.message}`;
+                                break;
+                            case 'broadcast':
+                                message = `📢 Broadcast: ${data.message}`;
+                                break;
+                            case 'error':
+                                message = `❌ Error: ${data.message}`;
+                                break;
+                            default:
+                                message = data.message || JSON.stringify(data);
+                        }
+                        
+                        addMessage(message, data.type === 'laravel_message' ? 'laravel' : 'received');
+                    } catch (error) {
+                        addMessage(event.data, 'received');
+                    }
+                };
+                
+                socket.onclose = function(event) {
+                    console.log('WebSocket disconnected');
+                    updateStatus(false);
+                    addMessage('👋 Connection closed', 'system');
+                };
+                
+                socket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    addMessage('❌ Connection error occurred', 'system');
+                };
+                
+            } catch (error) {
+                console.error('Error creating WebSocket:', error);
+                alert('Lỗi kết nối WebSocket: ' + error.message);
+            }
+        }
+        
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+        }
+        
+        function registerUser() {
+            if (!isConnected) {
+                alert('Vui lòng kết nối WebSocket trước!');
+                return;
+            }
+            
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Vui lòng nhập User ID!');
+                return;
+            }
+            
+            const data = {
+                type: "register",
+                userId: parseInt(userId)
+            };
+            
+            socket.send(JSON.stringify(data));
+            addMessage(`📤 Registering as user ${userId}`, 'sent');
+        }
+        
+        function sendLaravelMessage() {
+            if (!isConnected) {
+                alert('Vui lòng kết nối WebSocket trước!');
+                return;
+            }
+            
+            const targetUserId = document.getElementById('targetUserId').value;
+            const messageText = document.getElementById('messageText').value;
+            
+            if (!targetUserId || !messageText) {
+                alert('Vui lòng nhập Target User ID và Message!');
+                return;
+            }
+            
+            const data = {
+                event: "WebSocketMessage",
+                channel: `chat.user.${targetUserId}`,
+                data: {
+                    user: `User ${currentUserId || 'Unknown'}`,
+                    message: messageText,
+                    receiverId: parseInt(targetUserId),
+                    conversationId: `${currentUserId || 'unknown'}_${targetUserId}`,
+                    timestamp: new Date().toLocaleTimeString()
+                }
+            };
+            
+            socket.send(JSON.stringify(data));
+            addMessage(`📤 Laravel Message to user ${targetUserId}: ${messageText}`, 'sent');
+        }
+        
+        function sendTestMessage() {
+            if (!isConnected) {
+                alert('Vui lòng kết nối WebSocket trước!');
+                return;
+            }
+            
+            const testMessages = [
+                'Hello from Laravel! 👋',
+                'Testing WebSocket connection 🧪',
+                'This is a test message 📝',
+                'WebSocket is working! 🎉'
+            ];
+            
+            const randomMessage = testMessages[Math.floor(Math.random() * testMessages.length)];
+            document.getElementById('messageText').value = randomMessage;
+            sendLaravelMessage();
+        }
+        
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+        
+        function showHelp() {
+            alert(`Laravel WebSocket Test Client Help:
+
+1. Connect to WebSocket server
+2. Register as a user (enter User ID)
+3. Send Laravel format messages to other users
+4. Test targeted delivery
+
+Laravel Message Format:
+- event: "WebSocketMessage"
+- channel: "chat.user.{userId}"
+- data: { user, message, receiverId, conversationId, timestamp }
+
+This simulates Laravel broadcasting to WebSocket server.`);
+        }
+    </script>
+</body>
+</html>
