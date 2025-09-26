@@ -10,12 +10,16 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 
 // CORS Middleware
-const corsOptions = {
-  origin: "https://study.vttu.edu.vn:8338", // Allow specific origin
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-app.use(cors(corsOptions));
+// Tạm thời cho phép tất cả các origin để debug.
+// Sau khi xác nhận thành công, chúng ta sẽ đổi lại thành origin cụ thể.
+app.use(cors()); 
+
+// const corsOptions = {
+//   origin: "https://study.vttu.edu.vn:8338", // Allow specific origin
+//   methods: ["GET", "POST", "OPTIONS"],
+//   allowedHeaders: ["Content-Type", "Authorization"],
+// };
+// app.use(cors(corsOptions));
 app.use(express.json()); // Middleware to parse JSON
 
 const server = app.listen(PORT, () => {
